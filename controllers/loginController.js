@@ -1,5 +1,3 @@
-// controllers/loginController.js
-const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const connection = require('../models/database');
 
@@ -7,6 +5,7 @@ exports.login = (req, res) => {
   const { kode_akun } = req.body;
   const loginTime = new Date();
 
+  // Query hanya berdasarkan kode_akun
   const query = 'SELECT * FROM karyawan WHERE kode_akun = ?';
   connection.query(query, [kode_akun], (err, results) => {
     if (err) {
@@ -15,8 +14,10 @@ exports.login = (req, res) => {
     }
 
     if (results.length > 0) {
+      // Membuat JWT token jika kode_akun ditemukan
       const token = jwt.sign({ id: results[0].id, kode_akun: results[0].kode_akun }, 'your_jwt_secret_key', { expiresIn: '1h' });
 
+      // Update waktu login di database
       const updateQuery = 'UPDATE karyawan SET waktu_login = ? WHERE kode_akun = ?';
       connection.query(updateQuery, [loginTime, kode_akun], (err, updateResult) => {
         if (err) {
@@ -24,11 +25,12 @@ exports.login = (req, res) => {
           return res.status(500).json({ error: 'Error updating login time' });
         }
 
+        // Kirim respons sukses
         return res.json({
           success: true,
           message: 'Login successful',
           token: token,
-          user: results[0],
+          user: results[0], // Kirim data pengguna
           loginTime: loginTime.toISOString()
         });
       });
@@ -37,4 +39,3 @@ exports.login = (req, res) => {
     }
   });
 };
-

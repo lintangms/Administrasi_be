@@ -10,5 +10,7 @@ router.get('/allkasbon', kasbonController.getAllKasbon);
 
 // Endpoint untuk mendapatkan kasbon berdasarkan ID karyawan
 router.get('/kasbon/:id_karyawan', kasbonController.getKasbonByKaryawan);
+router.put('/updatekasbon/:id_kasbon', kasbonController.updateKasbonStatusByIdKasbon);
+
 
 module.exports = router;

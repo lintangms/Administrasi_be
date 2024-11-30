@@ -8,6 +8,9 @@ router.get('/transaksi', transaksiController.getAllTransaksi)
 router.put('/sellkoin/:id_koin', transaksiController.sellKoin)
 router.get('/handleget/:id_karyawan', transaksiController.handleTransaksi)
 router.get('/koin-statistik', transaksiController.getKoinStatistik);
-router.get('/filter', transaksiController.getFilteredTransaksi)
+router.get('/filter', transaksiController.getFilteredTransaksi);
 router.get('/gaji', transaksiController.getgaji)
+router.get('/karyawangame', transaksiController.getKaryawanByGame)
+router.get('/karyawantop', transaksiController.getTopKaryawanByKoin)
+router.get('/statsperiode', transaksiController.getKoinStatistikPeriode)
 module.exports = router;

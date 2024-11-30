@@ -27,10 +27,14 @@ exports.getUserByKodeAkun = (req, res) => {
   });
 };
 exports.getAllUsers = (req, res) => {
-  const { nama, status, kategori } = req.query; // Ambil parameter query dari request
+  const { nama, status, kategori, limit = 10, page = 1 } = req.query; // Ambil parameter query dari request
 
-  // Mulai dengan query dasar
-  let query = `SELECT nama, no_telp, kode_akun, status, kategori FROM karyawan WHERE 1=1`;
+  // Perhitungan OFFSET dan penanganan "all" untuk limit
+  const isAll = limit === 'all';
+  const offset = isAll ? 0 : (page - 1) * Number(limit);
+
+  // Mulai dengan query dasar, pastikan id_karyawan dimasukkan
+  let query = `SELECT id_karyawan, nama, no_telp, kode_akun, status, kategori FROM karyawan WHERE 1=1`;
 
   // Array untuk menyimpan nilai parameter
   const params = [];
@@ -51,23 +55,43 @@ exports.getAllUsers = (req, res) => {
     params.push(kategori);
   }
 
+  // Tambahkan urutan berdasarkan 'created_at' (terbaru di atas)
+  query += ` ORDER BY created_at DESC`; // Urutkan berdasarkan tanggal pembuatan
+
+  // Tambahkan LIMIT dan OFFSET hanya jika limit tidak "all"
+  if (!isAll) {
+    query += ` LIMIT ? OFFSET ?`;
+    params.push(Number(limit), Number(offset));
+  }
+
+  // Eksekusi query dengan filter
   connection.query(query, params, (err, results) => {
     if (err) {
       console.error('Error querying database: ', err);
       return res.status(500).json({ error: 'Error querying database' });
     }
 
-    // Jika ada hasil, kirimkan data karyawan
-    if (results.length > 0) {
+    // Hitung total data tanpa pagination untuk informasi jumlah halaman
+    const countQuery = `SELECT COUNT(*) as total FROM karyawan WHERE 1=1`;
+
+    connection.query(countQuery, params.slice(0, -2), (err, countResults) => {
+      if (err) {
+        console.error('Error counting users: ', err);
+        return res.status(500).json({ error: 'Error counting users' });
+      }
+
       return res.json({
         success: true,
-        users: results, // Mengembalikan array data karyawan yang difilter
+        users: results, // Mengembalikan array data karyawan yang difilter, termasuk id_karyawan
+        total: countResults[0].total,
+        page: isAll ? 1 : Number(page),
+        limit: isAll ? countResults[0].total : Number(limit),
       });
-    } else {
-      return res.status(404).json({ success: false, message: 'No users found' });
-    }
+    });
   });
 };
+
+
 
 exports.getUserByIdKaryawan = (req, res) => {
   const { id_karyawan } = req.params;  // Menggunakan id_karyawan sebagai parameter
@@ -133,3 +157,86 @@ exports.addUser = (req, res) => {
   });
 };
 
+
+exports.updateUser = (req, res) => {
+  const idKaryawan = req.params.id_karyawan; // Tangkap ID dari parameter URL
+  const { nama, no_telp, kode_akun, status, kategori } = req.body;
+
+  // Validasi input
+  if (!nama || !no_telp || !kode_akun || !status || !kategori) {
+    return res.status(400).json({ error: 'Semua field wajib diisi' });
+  }
+
+  const validStatuses = ['calon', 'karyawan'];
+  const validCategories = ['baru', 'lama'];
+
+  if (!validStatuses.includes(status) || !validCategories.includes(kategori)) {
+    return res.status(400).json({ error: 'Status atau kategori tidak valid' });
+  }
+
+  const query = `
+    UPDATE karyawan
+    SET nama = ?, no_telp = ?, kode_akun = ?, status = ?, kategori = ?
+    WHERE id_karyawan = ?
+  `;
+
+  connection.query(
+    query,
+    [nama, no_telp, kode_akun, status, kategori, idKaryawan],
+    (err, result) => {
+      if (err) {
+        console.error('Error updating user: ', err);
+        return res.status(500).json({ error: 'Gagal mengupdate user' });
+      }
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ error: 'Karyawan tidak ditemukan' });
+      }
+
+      res.status(200).json({ success: true, message: 'User updated successfully' });
+    }
+  );
+};
+exports.deleteUser = (req, res) => {
+  const { id_karyawan } = req.params; // ID karyawan yang akan dihapus
+
+  // Validasi input
+  if (!id_karyawan) {
+    return res.status(400).json({ error: 'ID karyawan wajib diisi' });
+  }
+
+  // Query untuk menghapus data terkait transaksi terlebih dahulu
+  const deleteTransaksiQuery = `
+    DELETE FROM transaksi
+    WHERE id_karyawan = ?
+  `;
+
+  connection.query(deleteTransaksiQuery, [id_karyawan], (err, result) => {
+    if (err) {
+      console.error('Error deleting related transaksi: ', err);
+      return res.status(500).json({ error: 'Error deleting related transaksi' });
+    }
+
+    // Setelah transaksi dihapus, lanjutkan menghapus karyawan
+    const query = `
+      DELETE FROM karyawan
+      WHERE id_karyawan = ?
+    `;
+
+    connection.query(query, [id_karyawan], (err, result) => {
+      if (err) {
+        console.error('Error deleting user from database: ', err);
+        return res.status(500).json({ error: 'Error deleting user from database' });
+      }
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ error: 'Karyawan tidak ditemukan' });
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: 'User deleted successfully',
+      });
+    });
+  });
+};
