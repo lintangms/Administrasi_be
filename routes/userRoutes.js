@@ -8,7 +8,9 @@ router.get('/users', userController.getAllUsers);
 router.get('/users/:id_karyawan', userController.getUserByIdKaryawan);
 router.post('/adduser', userController.addUser);
 router.put('/update/:id_karyawan', userController.updateUser);
-router.delete('/delete/:id_karyawan', userController.deleteUser)
+router.delete('/delete/:id_karyawan', userController.deleteUser);
+router.post('/addakun', userController.addAkunToUser)
+router.get('/getakun', userController.getAkunKaryawan)
 
 
 module.exports = router;

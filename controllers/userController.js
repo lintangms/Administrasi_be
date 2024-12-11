@@ -5,9 +5,16 @@ exports.getUserByKodeAkun = (req, res) => {
   const { kode_akun } = req.params;
 
   const query = `
-    SELECT karyawan.nama, karyawan.no_telp, karyawan.waktu_login, transaksi.akun_steam, transaksi.akun_gmail, transaksi.shift
+    SELECT 
+      karyawan.nama, 
+      karyawan.no_telp, 
+      karyawan.waktu_login, 
+      akun_karyawan.akun_steam, 
+      akun_karyawan.akun_gmail, 
+      transaksi.shift
     FROM karyawan
-    INNER JOIN transaksi ON karyawan.id_karyawan = transaksi.id_transaksi
+    INNER JOIN transaksi ON karyawan.id_karyawan = transaksi.id_karyawan
+    INNER JOIN akun_karyawan ON transaksi.id_akun = akun_karyawan.id_akun
     WHERE karyawan.kode_akun = ?`;
 
   connection.query(query, [kode_akun], (err, results) => {
@@ -26,6 +33,8 @@ exports.getUserByKodeAkun = (req, res) => {
     }
   });
 };
+
+
 exports.getAllUsers = (req, res) => {
   const { nama, status, kategori, limit = 10, page = 1 } = req.query; // Ambil parameter query dari request
 
@@ -115,28 +124,25 @@ exports.getUserByIdKaryawan = (req, res) => {
   });
 };
 exports.addUser = (req, res) => {
-  const { nama, no_telp, kode_akun, status, kategori } = req.body;
+  const { nama, no_telp, kode_akun, status, kategori, akun } = req.body; // Tambahkan `akun` di body request
 
   // Validasi input
   if (!nama || !no_telp || !kode_akun || !status || !kategori) {
     return res.status(400).json({ error: 'Nama, nomor telepon, kode akun, status, dan kategori wajib diisi' });
   }
 
-  // Validasi nilai status dan kategori
-  const validStatuses = ['calon', 'karyawan'];  // Menambahkan 'karyawan' sebagai status yang valid
-  const validCategories = ['baru', 'lama'];     // Tetap mempertahankan kategori 'baru' dan 'lama'
+  const validStatuses = ['calon', 'karyawan'];
+  const validCategories = ['baru', 'lama'];
 
-  // Validasi status
   if (!validStatuses.includes(status)) {
     return res.status(400).json({ error: 'Status tidak valid. Pilihan: calon, karyawan' });
   }
 
-  // Validasi kategori
   if (!validCategories.includes(kategori)) {
     return res.status(400).json({ error: 'Kategori tidak valid. Pilihan: baru, lama' });
   }
 
-  // Query untuk menambahkan data karyawan dengan status dan kategori
+  // Query untuk menambahkan data karyawan
   const query = `
     INSERT INTO karyawan (nama, no_telp, kode_akun, status, kategori)
     VALUES (?, ?, ?, ?, ?)
@@ -148,14 +154,134 @@ exports.addUser = (req, res) => {
       return res.status(500).json({ error: 'Error inserting user into database' });
     }
 
-    // Mengembalikan ID pengguna yang baru ditambahkan
-    return res.status(201).json({
-      success: true,
-      message: 'User added successfully',
-      userId: result.insertId,
+    const userId = result.insertId; // ID dari karyawan yang baru saja ditambahkan
+
+    // Jika tidak ada akun yang diberikan, hanya tambahkan user
+    if (!akun || akun.length === 0) {
+      return res.status(201).json({
+        success: true,
+        message: 'User added successfully',
+        userId,
+      });
+    }
+
+    // Tambahkan akun ke tabel akun_karyawan
+    const akunValues = akun.map((item) => [userId, item.akun, item.jenis_akun]); // Array untuk batch insert
+    const akunQuery = `
+      INSERT INTO akun_karyawan (id_karyawan, akun, jenis_akun)
+      VALUES ?
+    `;
+
+    connection.query(akunQuery, [akunValues], (err) => {
+      if (err) {
+        console.error('Error inserting akun_karyawan into database: ', err);
+        return res.status(500).json({ error: 'Error inserting akun_karyawan into database' });
+      }
+
+      return res.status(201).json({
+        success: true,
+        message: 'User and akun_karyawan added successfully',
+        userId,
+      });
     });
   });
 };
+exports.addAkunToUser = (req, res) => {
+  const { id_karyawan, akun_steam, akun_gmail, jenis } = req.body; // Tambahkan jenis
+
+  // Validasi input
+  if (!id_karyawan || (!akun_steam && !akun_gmail) || !jenis) {
+    return res.status(400).json({ error: 'ID karyawan, akun_steam, akun_gmail, dan jenis wajib diisi' });
+  }
+
+  // Query untuk memeriksa apakah ID karyawan valid
+  const checkKaryawanQuery = `
+    SELECT id_karyawan, nama 
+    FROM karyawan 
+    WHERE id_karyawan = ?
+  `;
+
+  connection.query(checkKaryawanQuery, [id_karyawan], (err, results) => {
+    if (err) {
+      console.error('Error fetching karyawan from database: ', err);
+      return res.status(500).json({ error: 'Error fetching karyawan from database' });
+    }
+
+    if (results.length === 0) {
+      return res.status(404).json({ error: 'Karyawan tidak ditemukan' });
+    }
+
+    // Jika karyawan ditemukan, lanjutkan dengan penambahan akun
+    const query = `
+      INSERT INTO akun_karyawan (id_karyawan, akun_steam, akun_gmail, jenis)
+      VALUES (?, ?, ?, ?)
+    `;
+
+    connection.query(query, [id_karyawan, akun_steam, akun_gmail, jenis], (err) => {
+      if (err) {
+        console.error('Error inserting akun_karyawan into database: ', err);
+        return res.status(500).json({ error: 'Error inserting akun_karyawan into database' });
+      }
+
+      return res.status(201).json({
+        success: true,
+        message: 'Akun added to user successfully',
+        karyawan: results[0], // Mengirim data karyawan (id dan nama)
+      });
+    });
+  });
+};
+
+
+exports.getAkunKaryawan = (req, res) => {
+  const query = `
+    SELECT 
+      karyawan.id_karyawan,
+      karyawan.nama AS nama,
+      akun_karyawan.id_akun,
+      akun_karyawan.akun_steam,
+      akun_karyawan.akun_gmail,
+      akun_karyawan.jenis
+    FROM akun_karyawan
+    INNER JOIN karyawan ON akun_karyawan.id_karyawan = karyawan.id_karyawan
+  `;
+
+  connection.query(query, (err, results) => {
+    if (err) {
+      console.error('Error fetching akun_karyawan from database: ', err);
+      return res.status(500).json({ error: 'Error fetching akun_karyawan from database' });
+    }
+
+    // Proses data untuk mengelompokkan akun berdasarkan karyawan
+    const groupedData = results.reduce((acc, row) => {
+      const { id_karyawan, nama, id_akun, akun_steam, akun_gmail, jenis } = row;
+
+      if (!acc[id_karyawan]) {
+        acc[id_karyawan] = { nama, akun: [] };
+      }
+
+      acc[id_karyawan].akun.push({
+        id_akun,
+        akun_steam: akun_steam || 'Tidak ada',
+        akun_gmail: akun_gmail || 'Tidak ada',
+        jenis: jenis || 'Tidak ditentukan',
+      });
+
+      return acc;
+    }, {});
+
+    // Ubah hasil ke dalam bentuk array
+    const resultArray = Object.values(groupedData);
+
+    return res.status(200).json({
+      success: true,
+      data: resultArray,
+    });
+  });
+};
+
+
+
 
 
 exports.updateUser = (req, res) => {

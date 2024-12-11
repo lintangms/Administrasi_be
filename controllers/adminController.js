@@ -57,7 +57,6 @@ exports.updateAdminPassword = (req, res) => {
     });
   });
 };
-
 exports.getAllData = (req, res) => {
   const query = `
     SELECT 
@@ -66,14 +65,16 @@ exports.getAllData = (req, res) => {
       koin.jumlah_awal, 
       koin.jumlah_dijual, 
       koin.jumlah_sisa, 
-      transaksi.akun_steam, 
-      transaksi.akun_gmail, 
+      akun_steam.akun AS akun_steam, 
+      akun_gmail.akun AS akun_gmail, 
       transaksi.shift
     FROM karyawan
-    JOIN koin ON karyawan.id_karyawan = koin.id_karyawan   -- Sesuaikan dengan relasi antara karyawan dan koin
-    JOIN transaksi ON karyawan.id_karyawan = transaksi.id_karyawan   -- Sesuaikan dengan relasi antara karyawan dan transaksi
+    JOIN koin ON karyawan.id_karyawan = koin.id_karyawan
+    JOIN transaksi ON karyawan.id_karyawan = transaksi.id_karyawan
+    LEFT JOIN akun_karyawan akun_steam ON transaksi.id_akun = akun_steam.id_akun AND akun_steam.jenis_akun = 'steam'
+    LEFT JOIN akun_karyawan akun_gmail ON transaksi.id_akun = akun_gmail.id_akun AND akun_gmail.jenis_akun = 'gmail'
   `;
-  
+
   connection.query(query, (err, results) => {
     if (err) {
       console.error('Error querying database: ', err);
@@ -84,6 +85,6 @@ exports.getAllData = (req, res) => {
       return res.status(404).json({ message: 'No data found' });
     }
 
-    return res.json(results);  // Kirimkan hasil data gabungan
+    return res.json(results); // Kirimkan hasil data gabungan
   });
 };
