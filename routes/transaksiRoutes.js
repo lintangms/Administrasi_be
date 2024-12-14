@@ -13,4 +13,5 @@ router.get('/gaji', transaksiController.getgaji)
 router.get('/karyawangame', transaksiController.getKaryawanByGame)
 router.get('/karyawantop', transaksiController.getTopKaryawanByKoin)
 router.get('/statsperiode', transaksiController.getKoinStatistikPeriode)
+router.get('/getabsensi', transaksiController.getAbsensi)
 module.exports = router;

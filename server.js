@@ -27,7 +27,7 @@ app.use(cors({
 // Routes
 app.use('/api', userRoutes);
 app.use('/api', loginRoutes);
-app.use('/transaksi', transaksiRoutes);
+app.use('/api/transaksi', transaksiRoutes);
 app.use('/api', koinRoutes);
 app.use('/api', adminRoutes);
 app.use('/api', adminLoginRoutes);

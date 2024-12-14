@@ -36,10 +36,11 @@ exports.addTransaksi = (req, res) => {
       const id_koin = koinResult.insertId;
 
       // Insert data transaksi setelah koin berhasil disimpan
-      const insertTransaksiQuery = `
-        INSERT INTO transaksi (akun_steam, akun_gmail, shift, id_karyawan, keterangan, id_koin, jenis, id_akun)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `;
+   const insertTransaksiQuery = `
+  INSERT INTO transaksi (akun_steam, akun_gmail, shift, id_karyawan, keterangan, id_koin, jenis, id_akun)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+`;
+
 
       connection.query(insertTransaksiQuery, [akun_steam, akun_gmail, shift, id_karyawan, keterangan, id_koin, jenis, id_akun], (err, transaksiResult) => {
         if (err) {
@@ -67,17 +68,43 @@ exports.addTransaksi = (req, res) => {
 };
 
 
-
 exports.getAllTransaksi = (req, res) => {
   const getAllTransaksiQuery = `
     SELECT 
-      COUNT(DISTINCT transaksi.id_karyawan) AS total_karyawan,
-      SUM(CASE WHEN transaksi.jenis = 'TNL' THEN koin.jumlah_awal ELSE 0 END) AS total_koin_tnl,
-      SUM(CASE WHEN transaksi.jenis = 'LA' THEN koin.jumlah_awal ELSE 0 END) AS total_koin_la,
+      karyawan.id_karyawan,
+      karyawan.nama AS nama_karyawan,
+      CONCAT(
+        FLOOR(
+          SUM(
+            CASE 
+              WHEN masuk.waktu IS NOT NULL AND pulang.waktu IS NOT NULL 
+              THEN TIMESTAMPDIFF(SECOND, masuk.waktu, pulang.waktu)
+              ELSE 0
+            END
+          ) / 3600
+        ), ' Jam ',
+        FLOOR(
+          (SUM(
+            CASE 
+              WHEN masuk.waktu IS NOT NULL AND pulang.waktu IS NOT NULL 
+              THEN TIMESTAMPDIFF(SECOND, masuk.waktu, pulang.waktu)
+              ELSE 0
+            END
+          ) % 3600) / 60
+        ), ' Menit'
+      ) AS total_jam_kerja,
+      SUM(CASE WHEN masuk.jenis = 'TNL' THEN koin.jumlah_awal ELSE 0 END) AS total_koin_tnl,
+      SUM(CASE WHEN masuk.jenis = 'LA' THEN koin.jumlah_awal ELSE 0 END) AS total_koin_la,
       (SELECT COUNT(*) FROM kasbon) AS total_kasbon
-    FROM transaksi
-    LEFT JOIN karyawan ON transaksi.id_karyawan = karyawan.id_karyawan
-    LEFT JOIN koin ON transaksi.id_koin = koin.id_koin`;
+    FROM karyawan
+    LEFT JOIN transaksi AS masuk 
+      ON karyawan.id_karyawan = masuk.id_karyawan AND masuk.keterangan = 'masuk'
+    LEFT JOIN transaksi AS pulang 
+      ON karyawan.id_karyawan = pulang.id_karyawan AND pulang.keterangan = 'pulang'
+    LEFT JOIN koin 
+      ON masuk.id_koin = koin.id_koin
+    GROUP BY karyawan.id_karyawan
+  `;
 
   connection.query(getAllTransaksiQuery, (err, result) => {
     if (err) {
@@ -85,18 +112,82 @@ exports.getAllTransaksi = (req, res) => {
       return res.status(500).json({ error: 'Error fetching transaksi' });
     }
 
-    console.log(result); // Debugging untuk memastikan hasil query benar
-
     if (result.length === 0) {
       return res.status(404).json({ message: 'No transaksi found' });
     }
 
     return res.json({
       success: true,
-      data: result[0] // Mengembalikan objek pertama yang berisi total
+      data: result,
     });
   });
 };
+exports.getAbsensi = (req, res) => {
+  const getAbsensiQuery = `
+    SELECT 
+      karyawan.nama AS nama_karyawan,
+      transaksi.jenis,
+      koin.jumlah_awal,
+      koin.jumlah_dijual,
+      koin.jumlah_sisa,
+      transaksi.shift,
+      transaksi.keterangan,
+      transaksi.waktu,
+      CASE 
+        WHEN transaksi.keterangan = 'pulang' THEN 
+          CONCAT(
+            FLOOR(TIMESTAMPDIFF(SECOND, masuk.waktu, transaksi.waktu) / 3600), ' Jam ',
+            FLOOR((TIMESTAMPDIFF(SECOND, masuk.waktu, transaksi.waktu) % 3600) / 60), ' Menit'
+          )
+        ELSE NULL
+      END AS jam_kerja
+    FROM 
+      karyawan
+    JOIN transaksi 
+      ON karyawan.id_karyawan = transaksi.id_karyawan
+    LEFT JOIN koin 
+      ON transaksi.id_koin = koin.id_koin
+    LEFT JOIN transaksi AS masuk
+      ON transaksi.id_karyawan = masuk.id_karyawan 
+      AND masuk.keterangan = 'masuk'
+    WHERE 
+      transaksi.id_transaksi IN (
+        SELECT id_transaksi
+        FROM transaksi t1
+        WHERE t1.waktu = (
+          SELECT MAX(waktu)
+          FROM transaksi t2
+          WHERE t2.id_karyawan = t1.id_karyawan
+            AND t2.keterangan = t1.keterangan
+        )
+      )
+      AND (
+        transaksi.keterangan = 'masuk' OR 
+        transaksi.keterangan = 'pulang'
+      )
+    ORDER BY 
+      karyawan.nama, transaksi.keterangan DESC;
+  `;
+
+  connection.query(getAbsensiQuery, (err, result) => {
+    if (err) {
+      console.error('Error fetching absensi data: ', err);
+      return res.status(500).json({ error: 'Error fetching absensi data' });
+    }
+
+    if (result.length === 0) {
+      return res.status(404).json({ message: 'No absensi data found' });
+    }
+
+    return res.json({
+      success: true,
+      data: result,
+    });
+  });
+};
+
+
+
 
 exports.sellKoin = (req, res) => {
   const { id_koin } = req.params; // ID koin yang akan diupdate
