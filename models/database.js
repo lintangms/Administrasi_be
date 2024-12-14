@@ -1,12 +1,5 @@
-// models/database.js
 const mysql = require('mysql2');
 require('dotenv').config(); // Pastikan dotenv di-load di awal file
-
-// Debugging untuk memastikan variabel .env terbaca
-console.log('DB_HOST:', process.env.DB_HOST);
-console.log('DB_USER:', process.env.DB_USER);
-console.log('DB_PASSWORD:', process.env.DB_PASSWORD);
-console.log('DB_NAME:', process.env.DB_NAME);
 
 // Membuat koneksi ke database
 const connection = mysql.createConnection({
@@ -16,7 +9,7 @@ const connection = mysql.createConnection({
   database: process.env.DB_NAME
 });
 
-// Cek koneksi
+// Cek koneksi awal
 connection.connect((err) => {
   if (err) {
     console.error('Error connecting to MySQL: ', err);
@@ -25,4 +18,21 @@ connection.connect((err) => {
   }
 });
 
+// Menangani error koneksi
+connection.on('error', (err) => {
+  if (err.code === 'PROTOCOL_CONNECTION_LOST') {
+    console.error('Database connection lost. Reconnecting...');
+    connection.connect((reconnectErr) => {
+      if (reconnectErr) {
+        console.error('Error reconnecting to MySQL:', reconnectErr);
+      } else {
+        console.log('Reconnected to MySQL');
+      }
+    });
+  } else {
+    console.error('Database error:', err);
+  }
+});
+
+// Export connection untuk digunakan di tempat lain
 module.exports = connection;

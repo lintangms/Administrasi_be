@@ -11,6 +11,7 @@ router.put('/update/:id_karyawan', userController.updateUser);
 router.delete('/delete/:id_karyawan', userController.deleteUser);
 router.post('/addakun', userController.addAkunToUser)
 router.get('/getakun', userController.getAkunKaryawan)
+router.get('/getnama', userController.getKaryawanOptions)
 
 
 module.exports = router;

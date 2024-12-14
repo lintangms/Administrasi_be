@@ -11,6 +11,9 @@ const koinRoutes = require('./routes/koinRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const adminLoginRoutes = require('./routes/loginAdminRoutes');
 const kasbonRoutes = require('./routes/kasbonRoutes');  
+const dispensasiRoutes = require('./routes/dispensasiRoutes');
+const unsoldRoutes = require('./routes/unsoldRoutes');
+const penjualanRoutes = require('./routes/penjualanRoutes')
 
 // Middleware
 app.use(bodyParser.json());
@@ -29,6 +32,9 @@ app.use('/api', koinRoutes);
 app.use('/api', adminRoutes);
 app.use('/api', adminLoginRoutes);
 app.use('/api', kasbonRoutes);
+app.use('/api', dispensasiRoutes);
+app.use('/api', unsoldRoutes);
+app.use('/api', penjualanRoutes);
 
 // Start server
 const port = process.env.PORT || 5000;
