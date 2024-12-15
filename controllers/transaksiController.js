@@ -36,13 +36,12 @@ exports.addTransaksi = (req, res) => {
       const id_koin = koinResult.insertId;
 
       // Insert data transaksi setelah koin berhasil disimpan
-   const insertTransaksiQuery = `
-  INSERT INTO transaksi (akun_steam, akun_gmail, shift, id_karyawan, keterangan, id_koin, jenis, id_akun)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-`;
+      const insertTransaksiQuery = `
+        INSERT INTO transaksi (akun_steam, akun_gmail, shift, id_karyawan, keterangan, id_koin, jenis)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `;
 
-
-      connection.query(insertTransaksiQuery, [akun_steam, akun_gmail, shift, id_karyawan, keterangan, id_koin, jenis, id_akun], (err, transaksiResult) => {
+      connection.query(insertTransaksiQuery, [akun_steam, akun_gmail, shift, id_karyawan, keterangan, id_koin, jenis], (err, transaksiResult) => {
         if (err) {
           console.error('Error inserting transaksi: ', err);
           return res.status(500).json({ error: 'Error inserting transaksi' });
@@ -66,6 +65,7 @@ exports.addTransaksi = (req, res) => {
     });
   });
 };
+
 
 
 exports.getAllTransaksi = (req, res) => {
