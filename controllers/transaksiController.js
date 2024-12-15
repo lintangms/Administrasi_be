@@ -122,6 +122,37 @@ exports.getAllTransaksi = (req, res) => {
     });
   });
 };
+
+
+exports.getAllTransaksiStats = (req, res) => {
+  const getAllTransaksiQuery = `
+    SELECT 
+      COUNT(DISTINCT transaksi.id_karyawan) AS total_karyawan,
+      SUM(CASE WHEN transaksi.jenis = 'TNL' THEN koin.jumlah_awal ELSE 0 END) AS total_koin_tnl,
+      SUM(CASE WHEN transaksi.jenis = 'LA' THEN koin.jumlah_awal ELSE 0 END) AS total_koin_la,
+      (SELECT COUNT(*) FROM kasbon) AS total_kasbon
+    FROM transaksi
+    LEFT JOIN karyawan ON transaksi.id_karyawan = karyawan.id_karyawan
+    LEFT JOIN koin ON transaksi.id_koin = koin.id_koin`;
+
+  connection.query(getAllTransaksiQuery, (err, result) => {
+    if (err) {
+      console.error('Error fetching transaksi: ', err);
+      return res.status(500).json({ error: 'Error fetching transaksi' });
+    }
+
+    console.log(result); // Debugging untuk memastikan hasil query benar
+
+    if (result.length === 0) {
+      return res.status(404).json({ message: 'No transaksi found' });
+    }
+
+    return res.json({
+      success: true,
+      data: result[0] // Mengembalikan objek pertama yang berisi total
+    });
+  });
+};
 exports.getAbsensi = (req, res) => {
   const getAbsensiQuery = `
     SELECT 
@@ -296,47 +327,59 @@ exports.handleTransaksi = (req, res) => {
       });
   });
 };
+exports.getKoinStatistik = (req, res) => {
+  const statistikQuery = `
+    SELECT 
+      karyawan.nama,
+      COALESCE(
+        (SELECT koin.jumlah_awal
+         FROM koin
+         LEFT JOIN transaksi ON koin.id_koin = transaksi.id_koin
+         WHERE transaksi.jenis = 'TNL'
+         AND transaksi.id_karyawan = karyawan.id_karyawan
+         ORDER BY koin.waktu_update DESC
+         LIMIT 1), 0) AS tnl_koin,
+      COALESCE(
+        (SELECT koin.jumlah_awal
+         FROM koin
+         LEFT JOIN transaksi ON koin.id_koin = transaksi.id_koin
+         WHERE transaksi.jenis = 'LA'
+         AND transaksi.id_karyawan = karyawan.id_karyawan
+         ORDER BY koin.waktu_update DESC
+         LIMIT 1), 0) AS la_koin,
+      COUNT(DISTINCT CASE WHEN transaksi.jenis = 'TNL' THEN transaksi.id_karyawan END) AS total_karyawan_tnl,
+      COUNT(DISTINCT CASE WHEN transaksi.jenis = 'LA' THEN transaksi.id_karyawan END) AS total_karyawan_la
+    FROM karyawan
+    LEFT JOIN transaksi ON transaksi.id_karyawan = karyawan.id_karyawan
+    LEFT JOIN koin ON transaksi.id_koin = koin.id_koin
+    GROUP BY karyawan.nama
+    ORDER BY karyawan.nama ASC;
+  `;
 
+  connection.query(statistikQuery, (err, results) => {
+    if (err) {
+      console.error('Error fetching koin statistik: ', err);
+      return res.status(500).json({ error: 'Error fetching koin statistik' });
+    }
 
-  exports.getKoinStatistik = (req, res) => {
-    const statistikQuery = `
-      SELECT 
-        karyawan.nama,
-        SUM(CASE WHEN transaksi.jenis = 'TNL' THEN koin.jumlah_awal ELSE 0 END) AS tnl_koin,
-        SUM(CASE WHEN transaksi.jenis = 'LA' THEN koin.jumlah_awal ELSE 0 END) AS la_koin,
-        COUNT(DISTINCT CASE WHEN transaksi.jenis = 'TNL' THEN transaksi.id_karyawan END) AS total_karyawan_tnl,
-        COUNT(DISTINCT CASE WHEN transaksi.jenis = 'LA' THEN transaksi.id_karyawan END) AS total_karyawan_la
-      FROM transaksi
-      LEFT JOIN karyawan ON transaksi.id_karyawan = karyawan.id_karyawan
-      LEFT JOIN koin ON transaksi.id_koin = koin.id_koin
-      GROUP BY karyawan.nama
-      ORDER BY karyawan.nama ASC
-    `;
+    if (results.length === 0) {
+      return res.status(404).json({ message: 'Tidak ada data statistik ditemukan' });
+    }
 
-    connection.query(statistikQuery, (err, results) => {
-      if (err) {
-        console.error('Error fetching koin statistik: ', err);
-        return res.status(500).json({ error: 'Error fetching koin statistik' });
-      }
+    // Calculate total employees for TNL and LA
+    const totalKaryawanTNL = results.reduce((acc, row) => acc + (row.tnl_koin > 0 ? 1 : 0), 0);
+    const totalKaryawanLA = results.reduce((acc, row) => acc + (row.la_koin > 0 ? 1 : 0), 0);
 
-      if (results.length === 0) {
-        return res.status(404).json({ message: 'Tidak ada data statistik ditemukan' });
-      }
-
-      // Calculate total employees for TNL and LA
-      const totalKaryawanTNL = results.reduce((acc, row) => acc + (row.tnl_koin > 0 ? 1 : 0), 0);
-      const totalKaryawanLA = results.reduce((acc, row) => acc + (row.la_koin > 0 ? 1 : 0), 0);
-
-      return res.json({
-        success: true,
-        data: results,
-        stats: {
-          tnl: totalKaryawanTNL,
-          la: totalKaryawanLA,
-        },
-      });
+    return res.json({
+      success: true,
+      data: results,
+      stats: {
+        tnl: totalKaryawanTNL,
+        la: totalKaryawanLA,
+      },
     });
-  };
+  });
+};
 exports.getFilteredTransaksi = (req, res) => {
   const { nama, jenis, tanggal, limit = 10, page = 1 } = req.query;
 

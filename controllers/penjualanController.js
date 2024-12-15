@@ -12,30 +12,21 @@ exports.getKaryawanList = (req, res) => {
       res.json(results);
     });
   };
-
   exports.sellKoin = (req, res) => {
-    const { id_koin } = req.params; // ID koin yang akan diupdate
-    const { 
-      jumlah_dijual, 
-      tanggal, 
-      id_karyawan, 
-      server, 
-      demand, 
-      rate, 
-      rp 
-    } = req.body; // Data tambahan untuk tabel penjualan
-  
+    const { id_koin } = req.params; // ID koin yang akan dijual
+    const { jumlah_dijual, tanggal, server, demand, rate } = req.body; // Data yang dimasukkan oleh user
+    
     // Validasi input dasar
     if (!jumlah_dijual || jumlah_dijual <= 0) {
       return res.status(400).json({ error: 'Jumlah dijual harus lebih dari 0' });
     }
   
-    if (!tanggal || !id_karyawan || !server || !demand || !rate || !rp) {
+    if (!tanggal || !server || !demand || !rate) {
       return res.status(400).json({ error: 'Semua data untuk penjualan harus diisi' });
     }
   
-    // Ambil data koin untuk validasi jumlah_sisa
-    const getKoinQuery = `SELECT jumlah_sisa, jumlah_awal FROM koin WHERE id_koin = ?`;
+    // Ambil data koin untuk validasi jumlah_sisa dan id_karyawan
+    const getKoinQuery = `SELECT jumlah_sisa, id_karyawan FROM koin WHERE id_koin = ?`;
   
     connection.query(getKoinQuery, [id_koin], (err, result) => {
       if (err) {
@@ -47,75 +38,94 @@ exports.getKaryawanList = (req, res) => {
         return res.status(404).json({ error: 'Data koin tidak ditemukan' });
       }
   
-      const { jumlah_sisa, jumlah_awal } = result[0];
+      const { jumlah_sisa, id_karyawan } = result[0];
   
       // Pastikan jumlah dijual tidak melebihi jumlah sisa
       if (jumlah_dijual > jumlah_sisa) {
         return res.status(400).json({ error: 'Jumlah dijual melebihi jumlah sisa' });
       }
   
-      // Mulai transaksi
-      connection.beginTransaction((transactionErr) => {
-        if (transactionErr) {
-          console.error('Error starting transaction: ', transactionErr);
-          return res.status(500).json({ error: 'Error starting transaction' });
+      // Ambil nama karyawan berdasarkan id_karyawan
+      const getKaryawanQuery = `SELECT nama FROM karyawan WHERE id_karyawan = ?`;
+  
+      connection.query(getKaryawanQuery, [id_karyawan], (karyawanErr, karyawanResult) => {
+        if (karyawanErr) {
+          console.error('Error fetching karyawan: ', karyawanErr);
+          return res.status(500).json({ error: 'Error fetching karyawan' });
         }
   
-        // Update jumlah_dijual dan jumlah_sisa di tabel koin
-        const updateKoinQuery = `
-          UPDATE koin
-          SET jumlah_dijual = jumlah_dijual + ?, 
-              jumlah_sisa = jumlah_sisa - ?
-          WHERE id_koin = ?`;
+        if (karyawanResult.length === 0) {
+          return res.status(404).json({ error: 'Data karyawan tidak ditemukan' });
+        }
   
-        connection.query(updateKoinQuery, [jumlah_dijual, jumlah_dijual, id_koin], (updateErr) => {
-          if (updateErr) {
-            console.error('Error updating koin: ', updateErr);
-            return connection.rollback(() => {
-              res.status(500).json({ error: 'Error updating koin' });
-            });
+        const { nama } = karyawanResult[0];
+  
+        // Hitung rp (rate * jumlah_dijual)
+        const rp = rate * jumlah_dijual;
+  
+        // Mulai transaksi
+        connection.beginTransaction((transactionErr) => {
+          if (transactionErr) {
+            console.error('Error starting transaction: ', transactionErr);
+            return res.status(500).json({ error: 'Error starting transaction' });
           }
   
-          // Insert data ke tabel penjualan
-          const insertPenjualanQuery = `
-            INSERT INTO penjualan (
-              id_koin, tanggal, id_karyawan, server, demand, rate, rp
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)`;
+          // Update jumlah_dijual dan jumlah_sisa di tabel koin
+          const updateKoinQuery = `
+            UPDATE koin
+            SET jumlah_dijual = jumlah_dijual + ?, 
+                jumlah_sisa = jumlah_sisa - ?
+            WHERE id_koin = ?`;
   
-          connection.query(insertPenjualanQuery, [id_koin, tanggal, id_karyawan, server, demand, rate, rp], (insertErr) => {
-            if (insertErr) {
-              console.error('Error inserting penjualan: ', insertErr);
+          connection.query(updateKoinQuery, [jumlah_dijual, jumlah_dijual, id_koin], (updateErr) => {
+            if (updateErr) {
+              console.error('Error updating koin: ', updateErr);
               return connection.rollback(() => {
-                res.status(500).json({ error: 'Error inserting penjualan' });
+                res.status(500).json({ error: 'Error updating koin' });
               });
             }
   
-            // Commit transaksi
-            connection.commit((commitErr) => {
-              if (commitErr) {
-                console.error('Error committing transaction: ', commitErr);
+            // Insert data ke tabel penjualan
+            const insertPenjualanQuery = `
+              INSERT INTO penjualan (
+                id_koin, tanggal, id_karyawan, server, demand, rate, rp
+              ) VALUES (?, ?, ?, ?, ?, ?, ?)`;
+  
+            connection.query(insertPenjualanQuery, [id_koin, tanggal, id_karyawan, server, demand, rate, rp], (insertErr) => {
+              if (insertErr) {
+                console.error('Error inserting penjualan: ', insertErr);
                 return connection.rollback(() => {
-                  res.status(500).json({ error: 'Error committing transaction' });
+                  res.status(500).json({ error: 'Error inserting penjualan' });
                 });
               }
   
-              return res.json({
-                success: true,
-                message: 'Koin berhasil dijual dan data penjualan berhasil dicatat',
-                data: {
-                  id_koin,
-                  jumlah_dijual,
-                  jumlah_awal,
-                  jumlah_sisa: jumlah_sisa - jumlah_dijual,
-                  penjualan: {
-                    tanggal,
-                    id_karyawan,
-                    server,
-                    demand,
-                    rate,
-                    rp
-                  }
+              // Commit transaksi
+              connection.commit((commitErr) => {
+                if (commitErr) {
+                  console.error('Error committing transaction: ', commitErr);
+                  return connection.rollback(() => {
+                    res.status(500).json({ error: 'Error committing transaction' });
+                  });
                 }
+  
+                return res.json({
+                  success: true,
+                  message: 'Koin berhasil dijual dan data penjualan berhasil dicatat',
+                  data: {
+                    id_koin,
+                    jumlah_dijual,
+                    jumlah_sisa: jumlah_sisa - jumlah_dijual,
+                    penjualan: {
+                      tanggal,
+                      id_karyawan,
+                      nama_karyawan: nama, // Menambahkan nama karyawan
+                      server,
+                      demand,
+                      rate,
+                      rp
+                    }
+                  }
+                });
               });
             });
           });
@@ -123,6 +133,7 @@ exports.getKaryawanList = (req, res) => {
       });
     });
   };
+  
   
 exports.getAllKoinPenjualan = (req, res) => {
     // Query untuk mendapatkan semua data dari tabel koin dan penjualan
