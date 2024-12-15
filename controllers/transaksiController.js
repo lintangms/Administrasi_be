@@ -1,33 +1,32 @@
 const connection = require('../models/database');
 exports.addTransaksi = (req, res) => {
-  const { akun_steam, akun_gmail, shift, jumlah_awal_koin, keterangan, jenis } = req.body;
+  const { akun_steam, akun_gmail, shift, jumlah_awal, keterangan, jenis } = req.body;
   const { id_karyawan } = req.params;
 
-  // Validasi input...
-  // (Validasi seperti di kode kamu tetap sama)
+  if (!["masuk", "pulang"].includes(keterangan)) {
+    return res.status(400).json({ error: 'Keterangan harus berupa "masuk" atau "pulang"' });
+  }
 
-  // Query untuk memastikan akun_karyawan sudah ada
-  const insertAkunKaryawanQuery = `
-    INSERT INTO akun_karyawan (id_karyawan, akun_steam, akun_gmail)
-    VALUES (?, ?, ?)
-    ON DUPLICATE KEY UPDATE akun_steam = VALUES(akun_steam), akun_gmail = VALUES(akun_gmail)
-  `;
+  if (!["LA", "TNL"].includes(jenis)) {
+    return res.status(400).json({ error: 'Jenis harus berupa "LA" atau "TNL"' });
+  }
 
-  connection.query(insertAkunKaryawanQuery, [id_karyawan, akun_steam, akun_gmail], (err, akunResult) => {
-    if (err) {
-      console.error('Error inserting akun karyawan: ', err);
-      return res.status(500).json({ error: 'Error inserting akun karyawan' });
-    }
+  if (!id_karyawan || isNaN(id_karyawan)) {
+    return res.status(400).json({ error: 'ID karyawan harus disediakan dan berupa angka' });
+  }
 
-    const id_akun = akunResult.insertId || akunResult.insertId === 0 ? akunResult.insertId : id_karyawan;
+  const insertTransaksiQuery = 
+    `INSERT INTO transaksi (akun_steam, akun_gmail, shift, id_karyawan, keterangan, id_koin, jenis)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`;
 
-    // Setelah akun berhasil ditambahkan, lanjutkan dengan menambahkan koin
-    const insertKoinQuery = `
-      INSERT INTO koin (id_karyawan, id_akun, jumlah_awal, jumlah_sisa)
-      VALUES (?, ?, ?, ?)
-    `;
+  const insertKoinQuery = 
+    `INSERT INTO koin (id_karyawan, jumlah_awal, jumlah_sisa)
+     VALUES (?, ?, ?)`;
 
-    connection.query(insertKoinQuery, [id_karyawan, id_akun, jumlah_awal_koin, jumlah_awal_koin], (err, koinResult) => {
+  connection.query(
+    insertKoinQuery, 
+    [id_karyawan, jumlah_awal, jumlah_awal], 
+    (err, koinResult) => {
       if (err) {
         console.error('Error inserting koin: ', err);
         return res.status(500).json({ error: 'Error inserting koin' });
@@ -35,35 +34,33 @@ exports.addTransaksi = (req, res) => {
 
       const id_koin = koinResult.insertId;
 
-      // Insert data transaksi setelah koin berhasil disimpan
-      const insertTransaksiQuery = `
-        INSERT INTO transaksi (akun_steam, akun_gmail, shift, id_karyawan, keterangan, id_koin, jenis)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `;
+      connection.query(
+        insertTransaksiQuery, 
+        [akun_steam, akun_gmail, shift, id_karyawan, keterangan, id_koin, jenis], 
+        (err, transaksiResult) => {
+          if (err) {
+            console.error('Error inserting transaksi: ', err);
+            return res.status(500).json({ error: 'Error inserting transaksi' });
+          }
 
-      connection.query(insertTransaksiQuery, [akun_steam, akun_gmail, shift, id_karyawan, keterangan, id_koin, jenis], (err, transaksiResult) => {
-        if (err) {
-          console.error('Error inserting transaksi: ', err);
-          return res.status(500).json({ error: 'Error inserting transaksi' });
+          return res.json({
+            success: true,
+            message: 'Transaksi berhasil ditambahkan',
+            data: { 
+              akun_steam, 
+              akun_gmail, 
+              shift, 
+              jumlah_awal, 
+              jumlah_sisa: jumlah_awal,
+              keterangan,
+              jenis,
+              id_karyawan: parseInt(id_karyawan)
+            }
+          });
         }
-
-        return res.json({
-          success: true,
-          message: 'Transaksi berhasil ditambahkan',
-          data: {
-            akun_steam,
-            akun_gmail,
-            shift,
-            jumlah_awal_koin,
-            jumlah_sisa: jumlah_awal_koin,
-            keterangan,
-            jenis,
-            id_karyawan: parseInt(id_karyawan),
-          },
-        });
-      });
-    });
-  });
+      );
+    }
+  );
 };
 
 
