@@ -152,21 +152,15 @@ exports.getAbsensi = (req, res) => {
       AND masuk.keterangan = 'masuk'
     WHERE 
       transaksi.id_transaksi IN (
-        SELECT id_transaksi
+        SELECT MAX(t1.id_transaksi)
         FROM transaksi t1
-        WHERE t1.waktu = (
-          SELECT MAX(waktu)
-          FROM transaksi t2
-          WHERE t2.id_karyawan = t1.id_karyawan
-            AND t2.keterangan = t1.keterangan
-        )
-      )
-      AND (
-        transaksi.keterangan = 'masuk' OR 
-        transaksi.keterangan = 'pulang'
+        WHERE t1.keterangan IN ('masuk', 'pulang')
+        GROUP BY t1.id_karyawan, t1.keterangan
       )
     ORDER BY 
-      karyawan.nama, transaksi.keterangan DESC;
+      karyawan.nama, 
+      FIELD(transaksi.keterangan, 'masuk', 'pulang'), 
+      transaksi.waktu DESC;
   `;
 
   connection.query(getAbsensiQuery, (err, result) => {
@@ -185,8 +179,6 @@ exports.getAbsensi = (req, res) => {
     });
   });
 };
-
-
 
 
 exports.sellKoin = (req, res) => {
