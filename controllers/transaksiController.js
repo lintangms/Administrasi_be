@@ -328,28 +328,30 @@ exports.getKoinStatistik = (req, res) => {
   const statistikQuery = `
     SELECT 
       karyawan.nama,
-      COALESCE(
-        (SELECT koin.jumlah_awal
-         FROM koin
-         LEFT JOIN transaksi ON koin.id_koin = transaksi.id_koin
-         WHERE transaksi.jenis = 'TNL'
-         AND transaksi.id_karyawan = karyawan.id_karyawan
-         ORDER BY koin.waktu_update DESC
-         LIMIT 1), 0) AS tnl_koin,
-      COALESCE(
-        (SELECT koin.jumlah_awal
-         FROM koin
-         LEFT JOIN transaksi ON koin.id_koin = transaksi.id_koin
-         WHERE transaksi.jenis = 'LA'
-         AND transaksi.id_karyawan = karyawan.id_karyawan
-         ORDER BY koin.waktu_update DESC
-         LIMIT 1), 0) AS la_koin,
-      COUNT(DISTINCT CASE WHEN transaksi.jenis = 'TNL' THEN transaksi.id_karyawan END) AS total_karyawan_tnl,
-      COUNT(DISTINCT CASE WHEN transaksi.jenis = 'LA' THEN transaksi.id_karyawan END) AS total_karyawan_la
+      COALESCE((
+        SELECT koin.jumlah_awal
+        FROM koin
+        LEFT JOIN transaksi ON koin.id_koin = transaksi.id_koin
+        WHERE transaksi.jenis = 'TNL'
+        AND transaksi.id_karyawan = karyawan.id_karyawan
+        ORDER BY koin.waktu_update DESC
+        LIMIT 1
+      ), 0) AS tnl_koin,
+      COALESCE((
+        SELECT koin.jumlah_awal
+        FROM koin
+        LEFT JOIN transaksi ON koin.id_koin = transaksi.id_koin
+        WHERE transaksi.jenis = 'LA'
+        AND transaksi.id_karyawan = karyawan.id_karyawan
+        ORDER BY koin.waktu_update DESC
+        LIMIT 1
+      ), 0) AS la_koin,
+      COUNT(DISTINCT CASE WHEN transaksi.jenis = 'TNL' THEN karyawan.id_karyawan END) AS total_karyawan_tnl,
+      COUNT(DISTINCT CASE WHEN transaksi.jenis = 'LA' THEN karyawan.id_karyawan END) AS total_karyawan_la
     FROM karyawan
     LEFT JOIN transaksi ON transaksi.id_karyawan = karyawan.id_karyawan
     LEFT JOIN koin ON transaksi.id_koin = koin.id_koin
-    GROUP BY karyawan.nama
+    GROUP BY karyawan.id_karyawan, karyawan.nama
     ORDER BY karyawan.nama ASC;
   `;
 
@@ -377,6 +379,7 @@ exports.getKoinStatistik = (req, res) => {
     });
   });
 };
+
 exports.getFilteredTransaksi = (req, res) => {
   const { nama, jenis, tanggal, limit = 10, page = 1 } = req.query;
 
