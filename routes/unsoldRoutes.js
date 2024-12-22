@@ -7,9 +7,10 @@ router.post('/addunsold/:id_karyawan', unsoldController.addUnsold);
 
 // Route untuk mendapatkan semua data unsold
 router.get('/getunsold', unsoldController.getAllUnsold);
-
-// Route untuk mendapatkan data unsold berdasarkan id_karyawan dengan pagination
 router.get('/getunsoldid/:id_karyawan', unsoldController.handleUnsold);
 router.put('/sellunsold/:id_unsold', unsoldController.sellKoin)
+router.post('/updateunsold/:id_unsold', unsoldController.updateUnsoldRate)
+router.post('/updateallunsold', unsoldController.updateAllUnsoldRate)
+// router.get('/totalunsold', unsoldController.getTotals )
 
 module.exports = router;

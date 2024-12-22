@@ -11,7 +11,10 @@ const penjualanController = require('../controllers/penjualanController'); // Pa
 // // Route untuk mendapatkan data unsold berdasarkan id_karyawan dengan pagination
 // router.get('/getunsoldid/:id_karyawan', penjualanController.handleUnsold);
 router.post('/sellkoins/:id_koin', penjualanController.sellKoin)
+router.post('/sellunsold/:id_unsold', penjualanController.sellUnsold)
 router.get('/getpenjualan', penjualanController.getAllKoinPenjualan)
-router.get('/getnama', penjualanController.getKaryawanList)
+router.get('/getsellunsold', penjualanController.getAllUnsoldPenjualan)
+// router.get('/getnama', penjualanController.getKaryawanList)
+
 
 module.exports = router;

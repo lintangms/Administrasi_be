@@ -54,42 +54,218 @@ exports.addUnsold = (req, res) => {
     });
   });
 };
-
 exports.getAllUnsold = (req, res) => {
-  const getAllUnsoldQuery = `
-      SELECT 
-          unsold.id_unsold, 
-          unsold.akun_steam, 
-          unsold.akun_gmail, 
-          unsold.shift, 
-          unsold.id_karyawan, 
-          karyawan.nama AS nama, 
-          unsold.jenis, 
-          unsold.jumlah_awal, 
-          unsold.jumlah_dijual, 
-          unsold.jumlah_sisa, 
-          unsold.waktu
-      FROM unsold
-      LEFT JOIN karyawan ON unsold.id_karyawan = karyawan.id_karyawan
-      ORDER BY unsold.waktu DESC
+  const { limit = 10, page = 1, bulan, tahun } = req.query;
+
+  const isAll = limit === 'all';
+  const offset = isAll ? 0 : (page - 1) * Number(limit);
+
+  let baseQuery = `
+    FROM unsold
+    LEFT JOIN karyawan ON unsold.id_karyawan = karyawan.id_karyawan
   `;
 
-  connection.query(getAllUnsoldQuery, (err, results) => {
+  const filters = [];
+  if (bulan && tahun) {
+    filters.push(`MONTH(unsold.waktu) = ? AND YEAR(unsold.waktu) = ?`);
+  } else if (tahun) {
+    filters.push(`YEAR(unsold.waktu) = ?`);
+  } else if (bulan) {
+    filters.push(`MONTH(unsold.waktu) = ?`);
+  }
+
+  if (filters.length > 0) {
+    baseQuery += ` WHERE ` + filters.join(' AND ');
+  }
+
+  const dataQuery = `
+    SELECT 
+      unsold.id_unsold, 
+      unsold.akun_steam, 
+      unsold.akun_gmail, 
+      unsold.shift, 
+      unsold.id_karyawan, 
+      karyawan.nama AS nama, 
+      unsold.jenis, 
+      unsold.jumlah_awal, 
+      unsold.jumlah_dijual, 
+      unsold.jumlah_sisa, 
+      unsold.rate, 
+      unsold.total_harga, 
+      unsold.waktu
+    ${baseQuery}
+    ORDER BY unsold.waktu DESC
+  `;
+
+  const paginatedQuery = isAll ? dataQuery : `${dataQuery} LIMIT ? OFFSET ?`;
+
+  const totalQuery = `
+    SELECT 
+      SUM(unsold.jumlah_sisa) AS total_jumlah_sisa,
+      SUM(unsold.jumlah_sisa * unsold.rate) AS total_rupiah,
+      COUNT(*) AS total_data
+    ${baseQuery}
+  `;
+
+  const queryParams = [];
+  if (bulan && tahun) {
+    queryParams.push(Number(bulan), Number(tahun));
+  } else if (tahun) {
+    queryParams.push(Number(tahun));
+  } else if (bulan) {
+    queryParams.push(Number(bulan));
+  }
+
+  const paginationParams = isAll ? [] : [Number(limit), Number(offset)];
+
+  connection.query(paginatedQuery, [...queryParams, ...paginationParams], (err, results) => {
+    if (err) {
+      console.error('Error fetching unsold data: ', err);
+      return res.status(500).json({ error: 'Error fetching unsold data' });
+    }
+
+    connection.query(totalQuery, queryParams, (err, totalResults) => {
       if (err) {
-          console.error('Error fetching unsold: ', err);
-          return res.status(500).json({ error: 'Terjadi kesalahan saat mengambil data unsold' });
+        console.error('Error fetching totals: ', err);
+        return res.status(500).json({ error: 'Error fetching totals' });
       }
 
-      if (results.length === 0) {
-          return res.status(404).json({ message: 'Tidak ada data unsold ditemukan' });
+      const totals = totalResults[0] || { total_jumlah_sisa: 0, total_rupiah: 0, total_data: 0 };
+
+      return res.json({
+        success: true,
+        data: results,
+        totals: {
+          total_jumlah_sisa: totals.total_jumlah_sisa || 0,
+          total_rupiah: totals.total_rupiah || 0,
+        },
+        pagination: {
+          total: totals.total_data,
+          page: isAll ? 1 : Number(page),
+          limit: isAll ? totals.total_data : Number(limit),
+        },
+      });
+    });
+  });
+};
+
+
+
+
+exports.updateUnsoldRate = (req, res) => {
+  const { id_unsold } = req.params; // Mengambil id_unsold dari params
+  const { rate } = req.body; // Mengambil rate dari body
+
+  if (!rate) {
+    return res.status(400).json({ error: 'Rate wajib diisi!' });
+  }
+
+  // Query untuk mendapatkan jumlah_sisa
+  const query = `
+    SELECT jumlah_sisa
+    FROM unsold
+    WHERE id_unsold = ?
+  `;
+
+  connection.query(query, [id_unsold], (err, result) => {
+    if (err) {
+      console.error('Error fetching jumlah_sisa: ', err);
+      return res.status(500).json({ error: 'Error fetching jumlah_sisa' });
+    }
+
+    if (result.length === 0) {
+      return res.status(404).json({ error: 'Unsold tidak ditemukan' });
+    }
+
+    const jumlah_sisa = result[0].jumlah_sisa;
+
+    // Lakukan update pada rate dan total_harga
+    const updateQuery = `
+      UPDATE unsold
+      SET rate = ?, total_harga = rate * ?
+      WHERE id_unsold = ?
+    `;
+
+    connection.query(updateQuery, [rate, jumlah_sisa, id_unsold], (err, updateResult) => {
+      if (err) {
+        console.error('Error updating unsold rate: ', err);
+        return res.status(500).json({ error: 'Error updating unsold rate' });
       }
 
       return res.json({
+        success: true,
+        message: 'Rate berhasil diupdate',
+        data: {
+          id_unsold: id_unsold,
+          rate: rate,
+          total_harga: rate * jumlah_sisa
+        }
+      });
+    });
+  });
+};
+
+
+
+exports.updateAllUnsoldRate = (req, res) => {
+  const { rate } = req.body; // Mengambil rate dari body
+
+  if (!rate) {
+    return res.status(400).json({ error: 'Rate wajib diisi!' });
+  }
+
+  // Query untuk mendapatkan semua data unsold
+  const query = `
+    SELECT id_unsold, jumlah_dijual
+    FROM unsold
+  `;
+
+  connection.query(query, (err, results) => {
+    if (err) {
+      console.error('Error fetching unsold data: ', err);
+      return res.status(500).json({ error: 'Error fetching unsold data' });
+    }
+
+    if (results.length === 0) {
+      return res.status(404).json({ error: 'Tidak ada data unsold ditemukan' });
+    }
+
+    // Update rate dan total_harga untuk setiap unsold
+    const updateQueries = results.map(result => {
+      const total_harga = rate * result.jumlah_dijual;
+
+      return new Promise((resolve, reject) => {
+        const updateQuery = `
+          UPDATE unsold
+          SET rate = ?, total_harga = ?
+          WHERE id_unsold = ?
+        `;
+
+        connection.query(updateQuery, [rate, total_harga, result.id_unsold], (err, updateResult) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve(updateResult);
+          }
+        });
+      });
+    });
+
+    // Menunggu semua update selesai
+    Promise.all(updateQueries)
+      .then(() => {
+        return res.json({
           success: true,
-          data: results,
+          message: 'Rate dan total_harga untuk semua unsold berhasil diupdate'
+        });
+      })
+      .catch(err => {
+        console.error('Error updating unsold data: ', err);
+        return res.status(500).json({ error: 'Error updating unsold data' });
       });
   });
 };
+
 
 exports.handleUnsold = (req, res) => {
     const { id_karyawan } = req.params; // Mengambil id_karyawan dari URL parameter
