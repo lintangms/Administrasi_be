@@ -592,9 +592,16 @@ exports.getGajiAll = (req, res) => {
                 return res.status(500).json({ error: 'Error fetching gaji data' });
             }
 
-            // Query to get total records count
+            // Query to get total records count and totals for fields
             const totalQuery = `
-                SELECT COUNT(*) AS total
+                SELECT 
+                    COUNT(*) AS total,
+                    SUM(g.koin) AS total_koin,
+                    SUM(g.unsold) AS total_unsold,
+                    SUM(g.sales_rate) AS total_sales_rate,
+                    SUM(g.kasbon) AS total_kasbon,
+                    SUM(g.bayar_emak) AS total_bayar_emak,
+                    SUM(g.total_gaji) AS total_gaji
                 ${baseQuery}
             `;
 
@@ -604,12 +611,22 @@ exports.getGajiAll = (req, res) => {
                     return res.status(500).json({ error: 'Error counting gaji data' });
                 }
 
+                const totals = countResults[0];
+
                 return res.json({
                     success: true,
                     data: results,
-                    total: countResults[0].total,
+                    total: totals.total,
                     page: isAll ? 1 : Number(page),
-                    limit: isAll ? countResults[0].total : Number(limit),
+                    limit: isAll ? totals.total : Number(limit),
+                    totals: {
+                        koin: totals.total_koin || 0,
+                        unsold: totals.total_unsold || 0,
+                        sales_rate: totals.total_sales_rate || 0,
+                        kasbon: totals.total_kasbon || 0,
+                        bayar_emak: totals.total_bayar_emak || 0,
+                        total_gaji: totals.total_gaji || 0,
+                    },
                 });
             });
         }

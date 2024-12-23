@@ -417,7 +417,19 @@ exports.getKoinStatistik = (req, res) => {
         AND transaksi.id_karyawan = karyawan.id_karyawan
         ORDER BY transaksi.timestamp DESC
         LIMIT 1
-      ), 0) AS la_koin
+      ), 0) AS la_koin,
+      COALESCE((
+        SELECT SUM(CASE WHEN transaksi.jenis = 'TNL' THEN koin.jumlah_dijual ELSE 0 END)
+        FROM koin
+        LEFT JOIN transaksi ON koin.id_koin = transaksi.id_koin
+        WHERE koin.id_karyawan = karyawan.id_karyawan
+      ), 0) AS tnl_terjual,
+      COALESCE((
+        SELECT SUM(CASE WHEN transaksi.jenis = 'LA' THEN koin.jumlah_dijual ELSE 0 END)
+        FROM koin
+        LEFT JOIN transaksi ON koin.id_koin = transaksi.id_koin
+        WHERE koin.id_karyawan = karyawan.id_karyawan
+      ), 0) AS la_terjual
     FROM karyawan
     LEFT JOIN transaksi ON transaksi.id_karyawan = karyawan.id_karyawan
     GROUP BY karyawan.id_karyawan, karyawan.nama
@@ -434,9 +446,11 @@ exports.getKoinStatistik = (req, res) => {
       return res.status(404).json({ message: 'Tidak ada data statistik ditemukan' });
     }
 
-    // Menghitung total karyawan yang memiliki transaksi TNL dan LA
+    // Menghitung total karyawan yang memiliki transaksi TNL, LA, dan jumlah_dijual > 0
     const totalKaryawanTNL = results.filter(row => row.tnl_koin > 0).length;
     const totalKaryawanLA = results.filter(row => row.la_koin > 0).length;
+    const totalKaryawanTNLJual = results.filter(row => row.tnl_terjual > 0).length;
+    const totalKaryawanLAJual = results.filter(row => row.la_terjual > 0).length;
 
     return res.json({
       success: true,
@@ -444,10 +458,13 @@ exports.getKoinStatistik = (req, res) => {
       stats: {
         tnl: totalKaryawanTNL,
         la: totalKaryawanLA,
+        tnl_terjual: totalKaryawanTNLJual,
+        la_terjual: totalKaryawanLAJual,
       },
     });
   });
 };
+
 
 
 
@@ -852,13 +869,29 @@ exports.getKoinKaryawan = (req, res) => {
         AND MONTH(transaksi.timestamp) = ? AND YEAR(transaksi.timestamp) = ?
         ORDER BY transaksi.timestamp DESC
         LIMIT 1
-      ), 0) AS la_koin
+      ), 0) AS la_koin,
+      COALESCE((
+        SELECT SUM(koin.jumlah_dijual)
+        FROM koin
+        LEFT JOIN transaksi ON koin.id_koin = transaksi.id_koin
+        WHERE transaksi.jenis = 'TNL'
+        AND koin.id_karyawan = karyawan.id_karyawan
+        AND MONTH(koin.waktu_update) = ? AND YEAR(koin.waktu_update) = ?
+      ), 0) AS tnl_dijual,
+      COALESCE((
+        SELECT SUM(koin.jumlah_dijual)
+        FROM koin
+        LEFT JOIN transaksi ON koin.id_koin = transaksi.id_koin
+        WHERE transaksi.jenis = 'LA'
+        AND koin.id_karyawan = karyawan.id_karyawan
+        AND MONTH(koin.waktu_update) = ? AND YEAR(koin.waktu_update) = ?
+      ), 0) AS la_dijual
     FROM karyawan
     LEFT JOIN transaksi ON transaksi.id_karyawan = karyawan.id_karyawan
     WHERE 1=1
   `;
 
-  let queryParams = [bulan, tahun, bulan, tahun];
+  let queryParams = [bulan, tahun, bulan, tahun, bulan, tahun, bulan, tahun];
 
   // Apply filters
   if (id_karyawan) {
@@ -887,9 +920,10 @@ exports.getKoinKaryawan = (req, res) => {
       return res.status(404).json({ message: 'Tidak ada data statistik ditemukan untuk periode ini' });
     }
 
-    // Menghitung total karyawan yang memiliki transaksi TNL dan LA
+    // Menghitung total karyawan yang memiliki transaksi TNL, LA, dan jumlah_dijual > 0
     const totalKaryawanTNL = results.filter(row => row.tnl_koin > 0).length;
     const totalKaryawanLA = results.filter(row => row.la_koin > 0).length;
+    const totalKaryawanJual = results.filter(row => row.tnl_dijual > 0 || row.la_dijual > 0).length;
 
     return res.json({
       success: true,
@@ -897,6 +931,7 @@ exports.getKoinKaryawan = (req, res) => {
       stats: {
         tnl: totalKaryawanTNL,
         la: totalKaryawanLA,
+        jual: totalKaryawanJual,
       },
     });
   });
