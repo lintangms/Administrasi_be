@@ -125,10 +125,17 @@ exports.getAllTransaksiStats = (req, res) => {
     SELECT 
       COUNT(DISTINCT transaksi.id_karyawan) AS total_karyawan,
       COALESCE((
-        SELECT SUM(koin.jumlah_awal)
-        FROM transaksi
-        INNER JOIN koin ON transaksi.id_koin = koin.id_koin
-        WHERE transaksi.jenis = 'TNL'
+        SELECT SUM(latest_koin.jumlah_awal)
+        FROM (
+          SELECT 
+            koin.jumlah_awal, 
+            transaksi.id_karyawan, 
+            ROW_NUMBER() OVER (PARTITION BY transaksi.id_karyawan ORDER BY transaksi.timestamp DESC) AS row_num
+          FROM koin
+          INNER JOIN transaksi ON koin.id_koin = transaksi.id_koin
+          WHERE transaksi.jenis = 'TNL'
+        ) AS latest_koin
+        WHERE latest_koin.row_num = 1
       ), 0) AS total_koin_tnl,
       COALESCE((
         SELECT SUM(latest_koin.jumlah_awal)
@@ -173,6 +180,7 @@ exports.getAllTransaksiStats = (req, res) => {
     });
   });
 };
+
 
 
 exports.getAbsensi = (req, res) => {
@@ -797,16 +805,62 @@ exports.getKoinStatistikPeriode = (req, res) => {
     periodColumn = "CONCAT('Minggu ', WEEK(transaksi.waktu)) AS period"; // Minggu (Week 1, Week 2, ...)
   }
 
-  // Query SQL untuk menghitung statistik berdasarkan grup (DAY/MONTH/WEEK)
+  // Query SQL untuk menghitung total koin dari data terakhir setiap id_karyawan
   const statistikQuery = `
     SELECT 
       ${periodColumn},
-      SUM(CASE WHEN transaksi.jenis = 'TNL' THEN koin.jumlah_awal ELSE 0 END) AS total_koin_tnl,
-      SUM(CASE WHEN transaksi.jenis = 'LA' THEN koin.jumlah_awal ELSE 0 END) AS total_koin_la,
-      (SUM(CASE WHEN transaksi.jenis = 'TNL' THEN koin.jumlah_awal ELSE 0 END) +
-       SUM(CASE WHEN transaksi.jenis = 'LA' THEN koin.jumlah_awal ELSE 0 END)) AS total_koin
+      COALESCE((
+        SELECT SUM(latest_koin_tnl.jumlah_awal)
+        FROM (
+          SELECT 
+            koin.jumlah_awal, 
+            transaksi.id_karyawan, 
+            ROW_NUMBER() OVER (PARTITION BY transaksi.id_karyawan ORDER BY transaksi.timestamp DESC) AS row_num
+          FROM koin
+          INNER JOIN transaksi ON koin.id_koin = transaksi.id_koin
+          WHERE transaksi.jenis = 'TNL'
+        ) AS latest_koin_tnl
+        WHERE latest_koin_tnl.row_num = 1
+      ), 0) AS total_koin_tnl,
+      COALESCE((
+        SELECT SUM(latest_koin_la.jumlah_awal)
+        FROM (
+          SELECT 
+            koin.jumlah_awal, 
+            transaksi.id_karyawan, 
+            ROW_NUMBER() OVER (PARTITION BY transaksi.id_karyawan ORDER BY transaksi.timestamp DESC) AS row_num
+          FROM koin
+          INNER JOIN transaksi ON koin.id_koin = transaksi.id_koin
+          WHERE transaksi.jenis = 'LA'
+        ) AS latest_koin_la
+        WHERE latest_koin_la.row_num = 1
+      ), 0) AS total_koin_la,
+      (COALESCE((
+        SELECT SUM(latest_koin_tnl.jumlah_awal)
+        FROM (
+          SELECT 
+            koin.jumlah_awal, 
+            transaksi.id_karyawan, 
+            ROW_NUMBER() OVER (PARTITION BY transaksi.id_karyawan ORDER BY transaksi.timestamp DESC) AS row_num
+          FROM koin
+          INNER JOIN transaksi ON koin.id_koin = transaksi.id_koin
+          WHERE transaksi.jenis = 'TNL'
+        ) AS latest_koin_tnl
+        WHERE latest_koin_tnl.row_num = 1
+      ), 0) + COALESCE((
+        SELECT SUM(latest_koin_la.jumlah_awal)
+        FROM (
+          SELECT 
+            koin.jumlah_awal, 
+            transaksi.id_karyawan, 
+            ROW_NUMBER() OVER (PARTITION BY transaksi.id_karyawan ORDER BY transaksi.timestamp DESC) AS row_num
+          FROM koin
+          INNER JOIN transaksi ON koin.id_koin = transaksi.id_koin
+          WHERE transaksi.jenis = 'LA'
+        ) AS latest_koin_la
+        WHERE latest_koin_la.row_num = 1
+      ), 0)) AS total_koin
     FROM transaksi
-    LEFT JOIN koin ON transaksi.id_koin = koin.id_koin
     WHERE transaksi.waktu BETWEEN ? AND ?
     GROUP BY period
     ORDER BY 
@@ -821,8 +875,7 @@ exports.getKoinStatistikPeriode = (req, res) => {
           'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
           'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
         ) /* Urutan bulan */
-      ` : `period /* Urutan default untuk WEEK */`
-    }
+      ` : `period /* Urutan default untuk WEEK */`}
   `;
 
   // Eksekusi query
@@ -842,6 +895,7 @@ exports.getKoinStatistikPeriode = (req, res) => {
     });
   });
 };
+
 
 exports.getKoinKaryawan = (req, res) => {
   const { id_karyawan, nama, bulan, tahun } = req.query;
